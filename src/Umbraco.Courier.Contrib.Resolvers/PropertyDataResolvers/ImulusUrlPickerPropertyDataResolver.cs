@@ -37,7 +37,7 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
 
         // from the versions found on Our - this version and forward stores arrays
         private readonly Version UrlPickerVersionStoringArray = new Version(0, 15, 0, 1);
-        
+
         /// <summary>
         /// Alias of the editor this resolver should trigger on.
         /// </summary>
@@ -70,6 +70,10 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
 
         private void ProcessPropertyData(Item item, ContentProperty propertyData, Action action)
         {
+            // check to see if the incoming JSON is escaped (indicates it is a nested property of a Leblender editor, for example).
+            // this boolean will decide whether to unescape/escape the JSON string in all serialize/deserialize functions below.
+            bool IsNestedProperty = propertyData.Value.ToString().Contains(@"\""");
+
             if (action == Action.Packaging)
             {
                 //Umbraco stores the UrlPickerPropertyData w/integer ids as json in the database, so we want to look for the those 
@@ -81,12 +85,16 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                 // Otherwise data is serialized as an array of objects, even if only one is selected.
                 if (UrlPickerVersion.Value < UrlPickerVersionStoringArray)
                 {
-                    var urlPickerPropertyData = JsonConvert.DeserializeObject<UrlPickerPropertyData>(propertyData.Value.ToString());
-                    urlPickerPropertyDatas = new List<UrlPickerPropertyData> {urlPickerPropertyData};
+                    var urlPickerPropertyData = IsNestedProperty ?
+                                                JsonConvert.DeserializeObject<UrlPickerPropertyData>(propertyData.Value.ToString().Replace(@"\n", "").Replace(@"\""", @"""")) :
+                                                JsonConvert.DeserializeObject<UrlPickerPropertyData>(propertyData.Value.ToString());
+                    urlPickerPropertyDatas = new List<UrlPickerPropertyData> { urlPickerPropertyData };
                 }
                 else
                 {
-                    urlPickerPropertyDatas = JsonConvert.DeserializeObject<IEnumerable<UrlPickerPropertyData>>(propertyData.Value.ToString());
+                    urlPickerPropertyDatas = IsNestedProperty ?
+                                             JsonConvert.DeserializeObject<IEnumerable<UrlPickerPropertyData>>(propertyData.Value.ToString().Replace(@"\n", "").Replace(@"\""", @"""")) :
+                                             JsonConvert.DeserializeObject<IEnumerable<UrlPickerPropertyData>>(propertyData.Value.ToString());
                 }
 
                 var resolvedPropertyDatas = new List<UrlPickerPropertyData>();
@@ -106,7 +114,8 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                         {
                             Type = urlPickerProperty.Type,
                             Meta = urlPickerProperty.Meta,
-                            TypeData = new TypeData { Url = urlPickerProperty.TypeData.Url, ContentId = new Guid(identifier) }
+                            TypeData = new TypeData { Url = urlPickerProperty.TypeData.Url, ContentId = new Guid(identifier) },
+                            Disabled = urlPickerProperty.Disabled
                         };
                         resolvedPropertyDatas.Add(packagedContentData);
                         continue;
@@ -125,7 +134,8 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                         {
                             Type = urlPickerProperty.Type,
                             Meta = urlPickerProperty.Meta,
-                            TypeData = new TypeData { Url = urlPickerProperty.TypeData.Url, MediaId = new Guid(identifier) }
+                            TypeData = new TypeData { Url = urlPickerProperty.TypeData.Url, MediaId = new Guid(identifier) },
+                            Disabled = urlPickerProperty.Disabled
                         };
                         resolvedPropertyDatas.Add(packagedMediaData);
                         continue;
@@ -136,7 +146,8 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                     {
                         Type = urlPickerProperty.Type,
                         Meta = urlPickerProperty.Meta,
-                        TypeData = new TypeData { Url = urlPickerProperty.TypeData.Url }
+                        TypeData = new TypeData { Url = urlPickerProperty.TypeData.Url },
+                        Disabled = urlPickerProperty.Disabled
                     };
                     //Since the Imulus.UrlPicker is already handled in Archetype we need to ensure that guids that are already resolved
                     //get passed on through to the property data value (for both Content and Media)
@@ -156,9 +167,13 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                 // If using an old version of the UrlPicker - data is serialized as a single object
                 // Otherwise data is serialized as an array of objects, even if only one is selected.
                 if (resolvedPropertyDatas.Count == 1 && UrlPickerVersion.Value < UrlPickerVersionStoringArray)
-                    propertyData.Value = JsonConvert.SerializeObject(resolvedPropertyDatas[0]);
+                    propertyData.Value = IsNestedProperty ?
+                                         JsonConvert.SerializeObject(resolvedPropertyDatas[0]).Replace(@"""", @"\""") :
+                                         JsonConvert.SerializeObject(resolvedPropertyDatas[0]);
                 else
-                    propertyData.Value = JsonConvert.SerializeObject(resolvedPropertyDatas);
+                    propertyData.Value = IsNestedProperty ?
+                                         JsonConvert.SerializeObject(resolvedPropertyDatas).Replace(@"""", @"\""") :
+                                         JsonConvert.SerializeObject(resolvedPropertyDatas);
             }
             else
             {
@@ -171,14 +186,18 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                 // Otherwise data is serialized as an array of objects, even if only one is selected.
                 if (UrlPickerVersion.Value < UrlPickerVersionStoringArray)
                 {
-                    var urlPickerPropertyData = JsonConvert.DeserializeObject<UrlPickerPropertyData>(propertyData.Value.ToString());
+                    var urlPickerPropertyData = IsNestedProperty ?
+                                                JsonConvert.DeserializeObject<UrlPickerPropertyData>(propertyData.Value.ToString().Replace(@"\n", "").Replace(@"\""", @"""")) :
+                                                JsonConvert.DeserializeObject<UrlPickerPropertyData>(propertyData.Value.ToString());
                     packagedUrlPickerPropertyDatas = new List<UrlPickerPropertyData> { urlPickerPropertyData };
                 }
                 else
                 {
-                    packagedUrlPickerPropertyDatas = JsonConvert.DeserializeObject<IEnumerable<UrlPickerPropertyData>>(propertyData.Value.ToString());
+                    packagedUrlPickerPropertyDatas = IsNestedProperty ?
+                                                     JsonConvert.DeserializeObject<IEnumerable<UrlPickerPropertyData>>(propertyData.Value.ToString().Replace(@"\n", "").Replace(@"\""", @"""")) :
+                                                     JsonConvert.DeserializeObject<IEnumerable<UrlPickerPropertyData>>(propertyData.Value.ToString());
                 }
- 
+
                 var resolvedPropertyDatas = new List<UrlPickerPropertyData>();
 
                 foreach (var packagedUrlPickerProperty in packagedUrlPickerPropertyDatas)
@@ -199,7 +218,8 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                                 {
                                     Url = packagedUrlPickerProperty.TypeData.Url,
                                     ContentId = id
-                                }
+                                },
+                                Disabled = packagedUrlPickerProperty.Disabled
                             };
                             resolvedPropertyDatas.Add(contentData);
                             continue;
@@ -222,7 +242,8 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                                 {
                                     Url = packagedUrlPickerProperty.TypeData.Url,
                                     MediaId = id
-                                }
+                                },
+                                Disabled = packagedUrlPickerProperty.Disabled
                             };
                             resolvedPropertyDatas.Add(mediaData);
                             continue;
@@ -234,7 +255,8 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                     {
                         Type = packagedUrlPickerProperty.Type,
                         Meta = packagedUrlPickerProperty.Meta,
-                        TypeData = new TypeData { Url = packagedUrlPickerProperty.TypeData.Url }
+                        TypeData = new TypeData { Url = packagedUrlPickerProperty.TypeData.Url },
+                        Disabled = packagedUrlPickerProperty.Disabled
                     };
                     //As a precaution we check if the content and media ids already exist in which case we keep them
                     //as they might already have been handled by Archetype
@@ -252,9 +274,13 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
                 // If using an old version of the UrlPicker - data is serialized as a single object
                 // Otherwise data is serialized as an array of objects, even if only one is selected.
                 if (resolvedPropertyDatas.Count == 1 && UrlPickerVersion.Value < UrlPickerVersionStoringArray)
-                    propertyData.Value = JsonConvert.SerializeObject(resolvedPropertyDatas[0]);
+                    propertyData.Value = IsNestedProperty ?
+                                         JsonConvert.SerializeObject(resolvedPropertyDatas[0]).Replace(@"""", @"\""") :
+                                         JsonConvert.SerializeObject(resolvedPropertyDatas[0]);
                 else
-                    propertyData.Value = JsonConvert.SerializeObject(resolvedPropertyDatas);
+                    propertyData.Value = IsNestedProperty ?
+                                         JsonConvert.SerializeObject(resolvedPropertyDatas).Replace(@"""", @"\""") :
+                                         JsonConvert.SerializeObject(resolvedPropertyDatas);
             }
         }
 
@@ -266,6 +292,8 @@ namespace Umbraco.Courier.Contrib.Resolvers.PropertyDataResolvers
             public Meta Meta { get; set; }
             [JsonProperty("typeData")]
             public TypeData TypeData { get; set; }
+            [JsonProperty("disabled")]
+            public bool Disabled { get; set; }
         }
 
         internal class Meta
